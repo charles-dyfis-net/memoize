@@ -20,7 +20,7 @@ class UpdateStatuses:
         """Checks if update for given key is in progress. Obtained info is valid until control gets back to IO-loop."""
         return key in self._updates_in_progress
 
-    def mark_being_updated(self, key: CacheKey) -> None:
+    def mark_being_updated(self, key: CacheKey) -> asyncio.Future:
         """Informs that update has been started.
         Should be called only if 'is_being_updated' returned False (and since then IO-loop has not been lost)..
         Calls to 'is_being_updated' will return True until 'mark_updated' will be called."""
@@ -42,6 +42,7 @@ class UpdateStatuses:
 
         asyncio.get_event_loop().call_later(delay=self._update_lock_timeout.total_seconds(),
                                             callback=complete_on_timeout_passed)
+        return future
 
     def mark_updated(self, key: CacheKey, entry: CacheEntry) -> None:
         """Informs that update has been finished.

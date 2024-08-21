@@ -17,7 +17,7 @@ class TestStatuses:
 
     async def test_should_not_be_updating(self):
         # given/when/then
-        assert not self.update_statuses.mark_being_updated('key')
+        assert not self.update_statuses.is_being_updated('key')
 
     async def test_should_be_updating(self):
         # given/when
