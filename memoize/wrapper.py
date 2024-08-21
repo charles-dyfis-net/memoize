@@ -77,7 +77,7 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
                       value_future_provider: Callable[[], asyncio.Future],
                       configuration_snapshot: CacheConfiguration):
         if actual_entry is None and update_status_tracker.is_being_updated(key):
-            logger.debug('As entry expired, waiting for results of concurrent refresh %s', key)
+            logger.debug('As no valid entry exists, waiting for results of concurrent refresh %s', key)
             entry = await update_status_tracker.await_updated(key)
             if isinstance(entry, Exception):
                 raise CachedMethodFailedException('Concurrent refresh failed to complete') from entry

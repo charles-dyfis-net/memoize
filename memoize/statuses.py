@@ -25,8 +25,10 @@ class UpdateStatuses:
         Should be called only if 'is_being_updated' returned False (and since then IO-loop has not been lost)..
         Calls to 'is_being_updated' will return True until 'mark_updated' will be called."""
         if key in self._updates_in_progress:
+            self.logger.error("mark_being_updated called while key %s is already being updated", key)
             raise ValueError('Key {} is already being updated'.format(key))
 
+        self.logger.debug("mark_being_updated allocating new future for keys %s", key)
         future: Future = asyncio.Future()
         self._updates_in_progress[key] = future
 
@@ -45,6 +47,7 @@ class UpdateStatuses:
         """Informs that update has been finished.
         Calls to 'is_being_updated' will return False until 'mark_being_updated' will be called."""
         if key not in self._updates_in_progress:
+            self.logger.error("mark_updated called while key %s is not being updated", key)
             raise ValueError('Key {} is not being updated'.format(key))
         update = self._updates_in_progress.pop(key)
         update.set_result(entry)
@@ -55,16 +58,18 @@ class UpdateStatuses:
         Calls to 'is_being_updated' will return False until 'mark_being_updated' will be called.
         Accepts exception to propagate it across all clients awaiting an update."""
         if key not in self._updates_in_progress:
+            self.logger.error("mark_update_aborted called while key %s is not being updated", key)
             raise ValueError('Key {} is not being updated'.format(key))
         update = self._updates_in_progress.pop(key)
         update.set_result(exception)
         self.logger.debug("mark_update_aborted(key=%r, exception=%r)", key, exception)
 
     def await_updated(self, key: CacheKey) -> Awaitable[Union[CacheEntry, Exception]]:
-        """Waits (asynchronously) until update in progress has benn finished.
+        """Waits (asynchronously) until update in progress has been finished.
         Returns awaitable with the updated entry
         (or awaitable with an exception if update failed/timed-out).
         Should be called only if 'is_being_updated' returned True (and since then IO-loop has not been lost)."""
         if not self.is_being_updated(key):
+            self.logger.error("await_updated called while key %s is not being updated", key)
             raise ValueError('Key {} is not being updated'.format(key))
         return self._updates_in_progress[key]
