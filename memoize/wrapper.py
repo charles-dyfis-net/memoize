@@ -85,9 +85,15 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
                          'relying on concurrent refresh to finish %s', key)
             return actual_entry
         elif not update_statuses.is_being_updated(key):
-            update_statuses.mark_being_updated(key)
+
             try:
                 value_future = value_future_provider()
+            except Exception as e:
+                logger.debug('Early failure instantiating coroutine for %s: %s', key, e)
+                raise CachedMethodFailedException('Refresh failed to start') from e
+
+            update_statuses.mark_being_updated(key)
+            try:
                 value = await value_future
                 offered_entry = configuration_snapshot.entry_builder().build(key, value)
                 await configuration_snapshot.storage().offer(key, offered_entry)
@@ -112,6 +118,16 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
                 logger.debug('Error while refreshing cache for %s: %s', key, e)
                 update_statuses.mark_update_aborted(key, e)
                 raise CachedMethodFailedException('Refresh failed to complete') from e
+            finally:
+                if not value_future.done():
+                    logger.debug('Caught attempt to exit refresh for %s with future still pending', key)
+                    # If we're still in the update tracker, clear it.
+                    ex = ValueError('Attempt to exit refresh with unfinished future')
+                    if update_statuses.is_being_updated(key):
+                        update_statuses.mark_update_aborted(key, ex)
+                    else:
+                        value_future.set_result(ex)
+
 
     @functools.wraps(method)
     async def wrapper(*args, **kwargs):
