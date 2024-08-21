@@ -23,7 +23,7 @@ class InvalidationSupport(object):
         self.__initialized = True
 
     async def invalidate_for_arguments(self, call_args: Tuple[Any, ...], call_kwargs: Dict[str, Any]) -> None:
-        """ Provide agrs and kwargs for which you want to invalidate cache. """
+        """ Provide args and kwargs for which you want to invalidate cache. """
         if not self._initialized():
             raise RuntimeError("Uninitialized: InvalidationSupport should be passed to @memoize to have it initialized")
         key = self.__key_extractor.format_key(self.__method_reference, call_args, call_kwargs)
