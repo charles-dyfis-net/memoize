@@ -48,6 +48,7 @@ class UpdateStatuses:
             raise ValueError('Key {} is not being updated'.format(key))
         update = self._updates_in_progress.pop(key)
         update.set_result(entry)
+        self.logger.debug("mark_updated(key=%r, entry=...)", key)
 
     def mark_update_aborted(self, key: CacheKey, exception: Exception) -> None:
         """Informs that update failed to complete.
@@ -57,6 +58,7 @@ class UpdateStatuses:
             raise ValueError('Key {} is not being updated'.format(key))
         update = self._updates_in_progress.pop(key)
         update.set_result(exception)
+        self.logger.debug("mark_update_aborted(key=%r, exception=%r)", key, exception)
 
     def await_updated(self, key: CacheKey) -> Awaitable[Union[CacheEntry, Exception]]:
         """Waits (asynchronously) until update in progress has benn finished.
