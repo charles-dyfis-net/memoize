@@ -76,33 +76,37 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
     async def refresh(actual_entry: Optional[CacheEntry], key: CacheKey,
                       value_future_provider: Callable[[], asyncio.Future],
                       configuration_snapshot: CacheConfiguration):
-        if actual_entry is None and update_status_tracker.is_being_updated(key):
-            logger.debug('As no valid entry exists, waiting for results of concurrent refresh %s', key)
-            entry = await update_status_tracker.await_updated(key)
-            if isinstance(entry, Exception):
-                raise CachedMethodFailedException('Concurrent refresh failed to complete') from entry
-            return entry
-        elif actual_entry is not None and update_status_tracker.is_being_updated(key):
-            logger.debug('As update point reached but concurrent update already in progress, '
-                         'relying on concurrent refresh to finish %s', key)
-            return actual_entry
-        elif not update_status_tracker.is_being_updated(key):
-            try:
-                # This future reflects the actual work being done
-                value_future = value_future_provider()
-            except Exception as e:
-                logger.debug('Early failure instantiating coroutine for %s: %s', key, e)
-                raise CachedMethodFailedException('Refresh failed to start') from e
 
-            # This future reflects clients being informed of the result, distinct from the actual work
-            notification_future = update_status_tracker.mark_being_updated(key)
-            try:
-                value = await value_future
-                offered_entry = configuration_snapshot.entry_builder().build(key, value)
-                await configuration_snapshot.storage().offer(key, offered_entry)
-                update_status_tracker.mark_updated(key, offered_entry)
-                logger.debug('Successfully refreshed cache for key %s', key)
+        if update_status_tracker.is_being_updated(key):
+            if actual_entry is None:
+                logger.debug('As no valid entry exists, waiting for results of concurrent refresh %s', key)
+                entry = await update_status_tracker.await_updated(key)
+                if isinstance(entry, Exception):
+                    raise CachedMethodFailedException('Concurrent refresh failed to complete') from entry
+                return entry
+            else:
+                logger.debug('As update point reached but concurrent update already in progress, '
+                             'relying on concurrent refresh to finish %s', key)
+                return actual_entry
 
+        # below here, is_being_updated was initially false
+        try:
+            # This future reflects the actual work being done
+            value_future = value_future_provider()
+        except Exception as e:
+            logger.debug('Early failure instantiating coroutine for %s: %s', key, e)
+            raise CachedMethodFailedException('Refresh failed to start') from e
+
+        # This future reflects clients being informed of the result, distinct from the actual work
+        notification_future = update_status_tracker.mark_being_updated(key)
+        try:
+            value = await value_future
+            offered_entry = configuration_snapshot.entry_builder().build(key, value)
+            await configuration_snapshot.storage().offer(key, offered_entry)
+            update_status_tracker.mark_updated(key, offered_entry)
+            logger.debug('Successfully refreshed cache for key %s', key)
+
+            try:
                 eviction_strategy = configuration_snapshot.eviction_strategy()
                 eviction_strategy.mark_written(key, offered_entry)
                 to_release = eviction_strategy.next_to_release()
@@ -111,20 +115,25 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
                         asyncio.ensure_future,
                         try_release(to_release, configuration_snapshot)
                     )
-
-                return offered_entry
-            except asyncio.TimeoutError as e:
-                logger.debug('Timeout for %s: %s', key, e)
-                update_status_tracker.mark_update_aborted(key, e)
-                raise CachedMethodFailedException('Refresh timed out') from e
             except Exception as e:
-                logger.debug('Error while refreshing cache for %s: %s', key, e)
-                update_status_tracker.mark_update_aborted(key, e)
-                raise CachedMethodFailedException('Refresh failed to complete') from e
+                logger.error("ignoring failure during eviction after successful refresh", exc_info=e)
             finally:
-                if not notification_future.done():
-                    notification_future.set_result(ValueError('Attempt to exit refresh with unfinished future'))
-                    logger.error("Caught attempt to exit refresh for %s with future in unfinished state")
+                return offered_entry
+        except asyncio.TimeoutError as e:
+            logger.debug('Timeout for %s: %s', key, e)
+            update_status_tracker.mark_update_aborted(key, e)
+            raise CachedMethodFailedException('Refresh timed out') from e
+        except Exception as e:
+            logger.debug('Error while refreshing cache for %s: %s', key, e)
+            update_status_tracker.mark_update_aborted(key, e)
+            raise CachedMethodFailedException('Refresh failed to complete') from e
+        finally:
+            err = RuntimeError('Attempt to exit refresh with unfinished future')
+            if update_status_tracker.is_being_updated(key):
+                update_status_tracker.mark_update_aborted(key, err)
+            if not notification_future.done():
+                notification_future.set_result(err)
+                logger.error("Caught attempt to exit refresh for %s with future in unfinished state", key)
 
 
     @functools.wraps(method)
