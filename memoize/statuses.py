@@ -54,7 +54,7 @@ class UpdateStatuses:
         update.set_result(entry)
         self.logger.debug("mark_updated(key=%r, entry=...)", key)
 
-    def mark_update_aborted(self, key: CacheKey, exception: Exception) -> None:
+    def mark_update_aborted(self, key: CacheKey, exception: BaseException) -> None:
         """Informs that update failed to complete.
         Calls to 'is_being_updated' will return False until 'mark_being_updated' will be called.
         Accepts exception to propagate it across all clients awaiting an update."""
@@ -65,7 +65,7 @@ class UpdateStatuses:
         update.set_result(exception)
         self.logger.debug("mark_update_aborted(key=%r, exception=%r)", key, exception)
 
-    def await_updated(self, key: CacheKey) -> Awaitable[Union[CacheEntry, Exception]]:
+    def await_updated(self, key: CacheKey) -> Awaitable[Union[CacheEntry, BaseException]]:
         """Waits (asynchronously) until update in progress has been finished.
         Returns awaitable with the updated entry
         (or awaitable with an exception if update failed/timed-out).

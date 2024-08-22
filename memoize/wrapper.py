@@ -81,7 +81,7 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
             if actual_entry is None:
                 logger.debug('As no valid entry exists, waiting for results of concurrent refresh %s', key)
                 entry = await update_status_tracker.await_updated(key)
-                if isinstance(entry, Exception):
+                if isinstance(entry, BaseException):
                     raise CachedMethodFailedException('Concurrent refresh failed to complete') from entry
                 return entry
             else:
@@ -93,7 +93,7 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
         try:
             # This future reflects the actual work being done
             value_future = value_future_provider()
-        except Exception as e:
+        except BaseException as e:
             logger.debug('Early failure instantiating coroutine for %s: %s', key, e)
             raise CachedMethodFailedException('Refresh failed to start') from e
 
@@ -123,7 +123,7 @@ def memoize(method: Optional[Callable] = None, configuration: CacheConfiguration
             logger.debug('Timeout for %s: %s', key, e)
             update_status_tracker.mark_update_aborted(key, e)
             raise CachedMethodFailedException('Refresh timed out') from e
-        except Exception as e:
+        except BaseException as e:
             logger.debug('Error while refreshing cache for %s: %s', key, e)
             update_status_tracker.mark_update_aborted(key, e)
             raise CachedMethodFailedException('Refresh failed to complete') from e
